@@ -32,10 +32,11 @@
   <button id="new">New demo</button>
   <button id="undo" disabled>Undo</button>
   <button id="redo" disabled>Redo</button>
+  <button id="snap" aria-pressed="true">Snap: 100 ms</button>
   <button id="save">Project → JSON</button>
   <button id="open">JSON → Project</button>
   <button id="plan">Build mix plan</button>
-  <small>Drag clips horizontally. 10 px = 100 ms. Canonical project state is the authority.</small>
+  <small>Drag clips horizontally. 10 px = 100 ms. Snap is visible and can be turned off; every move still becomes an explicit canonical edit.</small>
   <small id="history-status" aria-live="polite"></small>
 </header>
 <main>

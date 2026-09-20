@@ -4,6 +4,7 @@ import {
 import {
   createEditSession, commitEdit, undoEdit, redoEdit, canUndo, canRedo
 } from '../src/edit-ops.mjs';
+import { DEFAULT_SNAP_STEP_MS, snapTimeMs } from '../src/timeline-grid.mjs';
 
 const PX_PER_MS = 0.1;
 let session = createEditSession(makeDemo());
@@ -11,6 +12,7 @@ let project = session.project;
 let selectedId = null;
 let drag = null;
 let editCounter = 0;
+let snappingEnabled = true;
 
 const timeline = document.querySelector('#timeline');
 const io = document.querySelector('#io');
@@ -22,6 +24,7 @@ const fadeOutInput = document.querySelector('#fadeOut');
 const loopInput = document.querySelector('#loop');
 const undoButton = document.querySelector('#undo');
 const redoButton = document.querySelector('#redo');
+const snapButton = document.querySelector('#snap');
 const historyStatus = document.querySelector('#history-status');
 
 function makeDemo() {
@@ -34,6 +37,12 @@ function makeDemo() {
 }
 
 function nextEditId(prefix) { editCounter += 1; return `human:${prefix}:${editCounter}`; }
+function snappedStartMs(value) {
+  return snapTimeMs(Math.max(0, Math.round(value)), {
+    enabled: snappingEnabled,
+    stepMs: DEFAULT_SNAP_STEP_MS
+  });
+}
 function commitUserEdit(edit) {
   session = commitEdit(session, {
     schema: 'axm.sound-mix-edit/v1',
@@ -84,6 +93,9 @@ function render() {
   updateInspector();
   undoButton.disabled = !canUndo(session);
   redoButton.disabled = !canRedo(session);
+  snapButton.textContent = snappingEnabled ? `Snap: ${DEFAULT_SNAP_STEP_MS} ms` : 'Snap: off';
+  snapButton.setAttribute('aria-pressed', String(snappingEnabled));
+  startInput.step = snappingEnabled ? String(DEFAULT_SNAP_STEP_MS) : '1';
   historyStatus.textContent = `Project revision ${project.revision}. Undo/redo are explicit compensating edits; opening a project starts a fresh local edit history.`;
 }
 
@@ -111,13 +123,14 @@ function makeClip(placement) {
   });
   clip.addEventListener('pointermove', (event) => {
     if (!drag || drag.id !== placement.id) return;
-    const deltaMs = Math.round((event.clientX - drag.pointerX) / PX_PER_MS / 100) * 100;
-    clip.style.left = `${Math.max(0, drag.startMs + deltaMs) * PX_PER_MS}px`;
+    const rawStartMs = drag.startMs + (event.clientX - drag.pointerX) / PX_PER_MS;
+    const startMs = snappedStartMs(rawStartMs);
+    clip.style.left = `${startMs * PX_PER_MS}px`;
   });
   clip.addEventListener('pointerup', (event) => {
     if (!drag || drag.id !== placement.id) return;
-    const deltaMs = Math.round((event.clientX - drag.pointerX) / PX_PER_MS / 100) * 100;
-    const startMs = Math.max(0, drag.startMs + deltaMs);
+    const rawStartMs = drag.startMs + (event.clientX - drag.pointerX) / PX_PER_MS;
+    const startMs = snappedStartMs(rawStartMs);
     drag = null;
     if (startMs === placement.startMs) { render(); return; }
     commitUserEdit({
@@ -151,7 +164,7 @@ document.querySelector('#apply').addEventListener('click', () => {
   commitUserEdit({
     id: nextEditId('clip'), kind: 'placement.patch', targetId: selectedId,
     patch: {
-      startMs: Number(startInput.value), durationMs: Number(durationInput.value),
+      startMs: snappedStartMs(Number(startInput.value)), durationMs: Number(durationInput.value),
       fadeInMs: Number(fadeInInput.value), fadeOutMs: Number(fadeOutInput.value), loop: loopInput.checked
     }
   });
@@ -160,6 +173,10 @@ document.querySelector('#new').addEventListener('click', () => resetSession(make
 document.querySelector('#save').addEventListener('click', () => { io.value = canonicalJson(project); });
 document.querySelector('#open').addEventListener('click', () => resetSession(loadProject(io.value)));
 document.querySelector('#plan').addEventListener('click', () => { io.value = `${JSON.stringify(buildMixPlan(project), null, 2)}\n`; });
+snapButton.addEventListener('click', () => {
+  snappingEnabled = !snappingEnabled;
+  render();
+});
 undoButton.addEventListener('click', () => {
   if (!canUndo(session)) return;
   session = undoEdit(session); project = session.project; render();

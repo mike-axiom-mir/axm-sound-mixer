@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AXM Sound Mixer v0.1</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #111; color: #eee; }
+    header { padding: 16px; border-bottom: 1px solid #333; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button, input, select, textarea { font: inherit; }
+    button { padding: 8px 12px; }
+    #timeline { padding: 16px; display: grid; gap: 12px; }
+    .track { display:grid; grid-template-columns: 180px 1fr; min-height: 82px; border:1px solid #333; border-radius:10px; overflow:hidden; }
+    .track-head { padding: 10px; background:#191919; display:grid; gap:8px; }
+    .lane { position:relative; background: repeating-linear-gradient(90deg,#151515 0,#151515 99px,#2a2a2a 100px); min-height:82px; overflow:hidden; }
+    .clip { position:absolute; top:12px; height:54px; background:#444; border:1px solid #888; border-radius:8px; padding:6px; box-sizing:border-box; cursor:grab; user-select:none; min-width:20px; }
+    .clip:focus { outline:3px solid #fff; }
+    .muted { opacity:.4; }
+    #inspector { margin:16px; padding:16px; border:1px solid #333; border-radius:10px; display:grid; gap:8px; }
+    #io { width:100%; min-height:160px; background:#0a0a0a; color:#ddd; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    label { display:flex; gap:6px; align-items:center; }
+    small { color:#aaa; }
+  </style>
+</head>
+<body>
+<header>
+  <strong>AXM Sound Mixer v0.1</strong>
+  <button id="new">New demo</button>
+  <button id="save">Project → JSON</button>
+  <button id="open">JSON → Project</button>
+  <button id="plan">Build mix plan</button>
+  <small>Drag clips horizontally. 10 px = 100 ms. Canonical project state is the authority.</small>
+</header>
+<main>
+  <section id="timeline" aria-label="Timeline"></section>
+  <section id="inspector">
+    <strong>Selected clip</strong>
+    <div id="selection">Nothing selected.</div>
+    <div class="row">
+      <label>Start ms <input id="start" type="number" min="0" step="100" /></label>
+      <label>Duration ms <input id="duration" type="number" min="1" step="100" /></label>
+      <label>Fade in <input id="fadeIn" type="number" min="0" step="10" /></label>
+      <label>Fade out <input id="fadeOut" type="number" min="0" step="10" /></label>
+      <label><input id="loop" type="checkbox" /> Loop</label>
+      <button id="apply">Apply clip edit</button>
+    </div>
+    <textarea id="io" spellcheck="false" aria-label="Project JSON or mix plan"></textarea>
+  </section>
+</main>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

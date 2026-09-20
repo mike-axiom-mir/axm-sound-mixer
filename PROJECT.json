@@ -1,0 +1,32 @@
+{
+  "schema": "axm.project-definition/v1",
+  "id": "axm-sound-mixer",
+  "role": "beginner-friendly-audio-assembly-interface",
+  "owns": [
+    "track-layout",
+    "clip-placement",
+    "trim",
+    "loop",
+    "fade",
+    "automation",
+    "routing",
+    "mix-plan",
+    "human-interface"
+  ],
+  "does_not_own": [
+    "sound-synthesis-engine",
+    "music-composition-engine",
+    "opaque-private-project-format"
+  ],
+  "neighbors": [
+    "mike-axiom-mir/axm-audio-fabric",
+    "mike-axiom-mir/axm-music-maker"
+  ],
+  "first_contracts": [
+    "axm.sound-mix-project/v1",
+    "axm.audio-track/v1",
+    "axm.audio-placement/v1",
+    "axm.mix-automation/v1"
+  ],
+  "first_proof": "drag/place/trim/loop/fade supplied clips -> save -> reopen -> identical canonical mix plan"
+}

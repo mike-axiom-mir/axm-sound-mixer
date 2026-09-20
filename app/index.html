@@ -10,6 +10,7 @@
     header { padding: 16px; border-bottom: 1px solid #333; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button, input, select, textarea { font: inherit; }
     button { padding: 8px 12px; }
+    button:disabled { opacity:.45; }
     #timeline { padding: 16px; display: grid; gap: 12px; }
     .track { display:grid; grid-template-columns: 180px 1fr; min-height: 82px; border:1px solid #333; border-radius:10px; overflow:hidden; }
     .track-head { padding: 10px; background:#191919; display:grid; gap:8px; }
@@ -22,16 +23,20 @@
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     label { display:flex; gap:6px; align-items:center; }
     small { color:#aaa; }
+    #history-status { flex-basis:100%; }
   </style>
 </head>
 <body>
 <header>
   <strong>AXM Sound Mixer v0.1</strong>
   <button id="new">New demo</button>
+  <button id="undo" disabled>Undo</button>
+  <button id="redo" disabled>Redo</button>
   <button id="save">Project → JSON</button>
   <button id="open">JSON → Project</button>
   <button id="plan">Build mix plan</button>
   <small>Drag clips horizontally. 10 px = 100 ms. Canonical project state is the authority.</small>
+  <small id="history-status" aria-live="polite"></small>
 </header>
 <main>
   <section id="timeline" aria-label="Timeline"></section>

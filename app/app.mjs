@@ -1,12 +1,16 @@
 import {
-  createProject, addTrack, placeClip, movePlacement, editPlacement, setTrackMix,
-  canonicalJson, loadProject, buildMixPlan
+  createProject, addTrack, placeClip, canonicalJson, loadProject, buildMixPlan
 } from '../src/mixer-core.mjs';
+import {
+  createEditSession, commitEdit, undoEdit, redoEdit, canUndo, canRedo
+} from '../src/edit-ops.mjs';
 
 const PX_PER_MS = 0.1;
-let project = makeDemo();
+let session = createEditSession(makeDemo());
+let project = session.project;
 let selectedId = null;
 let drag = null;
+let editCounter = 0;
 
 const timeline = document.querySelector('#timeline');
 const io = document.querySelector('#io');
@@ -16,6 +20,9 @@ const durationInput = document.querySelector('#duration');
 const fadeInInput = document.querySelector('#fadeIn');
 const fadeOutInput = document.querySelector('#fadeOut');
 const loopInput = document.querySelector('#loop');
+const undoButton = document.querySelector('#undo');
+const redoButton = document.querySelector('#redo');
+const historyStatus = document.querySelector('#history-status');
 
 function makeDemo() {
   let p = createProject({ id: 'workspace-demo', title: 'Workspace Demo' });
@@ -24,6 +31,24 @@ function makeDemo() {
   p = placeClip(p, 'music', { id: 'exploration', source: { kind: 'music-stem', ref: 'music://exploration' }, startMs: 0, durationMs: 4000, fadeInMs: 100, fadeOutMs: 200 });
   p = placeClip(p, 'sfx', { id: 'impact', source: { kind: 'audio-cue', ref: 'audio://impact' }, startMs: 1500, durationMs: 500, fadeOutMs: 50 });
   return p;
+}
+
+function nextEditId(prefix) { editCounter += 1; return `human:${prefix}:${editCounter}`; }
+function commitUserEdit(edit) {
+  session = commitEdit(session, {
+    schema: 'axm.sound-mix-edit/v1',
+    ...edit,
+    actor: { kind: 'human', id: 'local-user' }
+  });
+  project = session.project;
+  render();
+}
+function resetSession(nextProject) {
+  project = nextProject;
+  session = createEditSession(project);
+  selectedId = null;
+  drag = null;
+  render();
 }
 
 function render() {
@@ -36,12 +61,18 @@ function render() {
     head.className = 'track-head';
     const title = document.createElement('strong');
     title.textContent = track.name;
-    const mute = control('Mute', track.mute, () => { project = setTrackMix(project, track.id, { mute: !track.mute }); render(); });
-    const solo = control('Solo', track.solo, () => { project = setTrackMix(project, track.id, { solo: !track.solo }); render(); });
+    const mute = control('Mute', track.mute, () => commitUserEdit({
+      id: nextEditId('mute'), kind: 'track.mix', targetId: track.id, patch: { mute: !track.mute }
+    }));
+    const solo = control('Solo', track.solo, () => commitUserEdit({
+      id: nextEditId('solo'), kind: 'track.mix', targetId: track.id, patch: { solo: !track.solo }
+    }));
     const gain = document.createElement('input');
     gain.type = 'range'; gain.min = '0'; gain.max = '2'; gain.step = '0.05'; gain.value = String(track.gain);
     gain.setAttribute('aria-label', `${track.name} gain`);
-    gain.addEventListener('change', () => { project = setTrackMix(project, track.id, { gain: Number(gain.value) }); render(); });
+    gain.addEventListener('change', () => commitUserEdit({
+      id: nextEditId('gain'), kind: 'track.mix', targetId: track.id, patch: { gain: Number(gain.value) }
+    }));
     head.append(title, mute, solo, gain);
     const lane = document.createElement('div');
     lane.className = 'lane';
@@ -51,6 +82,9 @@ function render() {
     timeline.append(wrapper);
   }
   updateInspector();
+  undoButton.disabled = !canUndo(session);
+  redoButton.disabled = !canRedo(session);
+  historyStatus.textContent = `Project revision ${project.revision}. Undo/redo are explicit compensating edits; opening a project starts a fresh local edit history.`;
 }
 
 function control(label, active, handler) {
@@ -83,9 +117,12 @@ function makeClip(placement) {
   clip.addEventListener('pointerup', (event) => {
     if (!drag || drag.id !== placement.id) return;
     const deltaMs = Math.round((event.clientX - drag.pointerX) / PX_PER_MS / 100) * 100;
-    project = movePlacement(project, placement.id, Math.max(0, drag.startMs + deltaMs));
+    const startMs = Math.max(0, drag.startMs + deltaMs);
     drag = null;
-    render();
+    if (startMs === placement.startMs) { render(); return; }
+    commitUserEdit({
+      id: nextEditId('drag'), kind: 'placement.patch', targetId: placement.id, patch: { startMs }
+    });
   });
   return clip;
 }
@@ -111,15 +148,38 @@ function updateInspector() {
 
 document.querySelector('#apply').addEventListener('click', () => {
   if (!selectedId) return;
-  project = editPlacement(project, selectedId, {
-    startMs: Number(startInput.value), durationMs: Number(durationInput.value),
-    fadeInMs: Number(fadeInInput.value), fadeOutMs: Number(fadeOutInput.value), loop: loopInput.checked
+  commitUserEdit({
+    id: nextEditId('clip'), kind: 'placement.patch', targetId: selectedId,
+    patch: {
+      startMs: Number(startInput.value), durationMs: Number(durationInput.value),
+      fadeInMs: Number(fadeInInput.value), fadeOutMs: Number(fadeOutInput.value), loop: loopInput.checked
+    }
   });
-  render();
 });
-document.querySelector('#new').addEventListener('click', () => { project = makeDemo(); selectedId = null; render(); });
+document.querySelector('#new').addEventListener('click', () => resetSession(makeDemo()));
 document.querySelector('#save').addEventListener('click', () => { io.value = canonicalJson(project); });
-document.querySelector('#open').addEventListener('click', () => { project = loadProject(io.value); selectedId = null; render(); });
+document.querySelector('#open').addEventListener('click', () => resetSession(loadProject(io.value)));
 document.querySelector('#plan').addEventListener('click', () => { io.value = `${JSON.stringify(buildMixPlan(project), null, 2)}\n`; });
+undoButton.addEventListener('click', () => {
+  if (!canUndo(session)) return;
+  session = undoEdit(session); project = session.project; render();
+});
+redoButton.addEventListener('click', () => {
+  if (!canRedo(session)) return;
+  session = redoEdit(session); project = session.project; render();
+});
+document.addEventListener('keydown', (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  if (event.shiftKey) {
+    if (!canRedo(session)) return;
+    event.preventDefault();
+    session = redoEdit(session); project = session.project; render();
+  } else {
+    if (!canUndo(session)) return;
+    event.preventDefault();
+    session = undoEdit(session); project = session.project; render();
+  }
+});
 
 render();

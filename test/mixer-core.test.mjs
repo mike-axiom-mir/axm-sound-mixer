@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createProject, addTrack, placeClip, movePlacement, trimPlacement, setLoop,
-  setFades, setTrackMix, addAutomation, canonicalJson, loadProject, buildMixPlan
+  setFades, setTrackMix, addAutomation, canonicalJson, loadProject, buildMixPlan, validateProject
 } from '../src/mixer-core.mjs';
 
 function baseProject() {
@@ -19,6 +19,41 @@ function baseProject() {
   });
   return project;
 }
+
+test('invalid numeric project state is rejected before cloning or serialization', () => {
+  for (const key of ['startMs', 'sourceOffsetMs', 'durationMs', 'fadeInMs', 'fadeOutMs', 'gain']) {
+    for (const value of [NaN, Infinity, -Infinity, null]) {
+      const project = baseProject();
+      project.tracks[0].placements[0][key] = value;
+      for (const action of [validateProject, canonicalJson, buildMixPlan, p => addTrack(p, { id: 'extra' })]) {
+        assert.throws(() => action(project), TypeError, `${key}=${value}`);
+      }
+      assert.ok(Object.is(project.tracks[0].placements[0][key], value));
+    }
+  }
+});
+
+test('saved placements require their canonical schema and explicit fields', () => {
+  for (const key of ['schema', 'startMs', 'sourceOffsetMs', 'durationMs', 'loop', 'fadeInMs', 'fadeOutMs', 'gain']) {
+    const project = baseProject();
+    delete project.tracks[0].placements[0][key];
+    assert.throws(() => loadProject(JSON.stringify(project)), TypeError, key);
+  }
+  const project = baseProject();
+  project.tracks[0].placements[0].loop = 'false';
+  assert.throws(() => loadProject(JSON.stringify(project)), TypeError);
+});
+
+test('saved automation validates values and unique identities', () => {
+  const project = addAutomation(baseProject(), { id: 'a', target: 'track:music:gain', points: [{ timeMs: 0, value: 1 }] });
+  for (const point of [{ timeMs: -1, value: 1 }, { timeMs: 0, value: 'loud' }, { timeMs: null, value: 1 }]) {
+    const bad = structuredClone(project);
+    bad.automation[0].points = [point];
+    assert.throws(() => loadProject(JSON.stringify(bad)), TypeError);
+  }
+  project.automation.push(structuredClone(project.automation[0]));
+  assert.throws(() => validateProject(project), /duplicate automation/);
+});
 
 test('canonical project round-trips byte-identically', () => {
   const project = baseProject();

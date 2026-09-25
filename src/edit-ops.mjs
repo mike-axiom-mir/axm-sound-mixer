@@ -9,7 +9,7 @@ const PLACEMENT_PATCH_KEYS = new Set([
 ]);
 const TRACK_MIX_PATCH_KEYS = new Set(['gain', 'pan', 'mute', 'solo']);
 
-function clone(value) { return JSON.parse(JSON.stringify(value)); }
+function clone(value) { return structuredClone(value); }
 function assertId(value, name) {
   if (typeof value !== 'string' || value.trim() === '') throw new TypeError(`${name} must be a non-empty string`);
 }

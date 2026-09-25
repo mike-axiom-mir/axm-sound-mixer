@@ -12,7 +12,10 @@ function assertFinite(value, name) {
 function assertId(value, name) {
   if (typeof value !== 'string' || value.trim() === '') throw new TypeError(`${name} must be a non-empty string`);
 }
-function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
+function assertBoolean(value, name) {
+  if (typeof value !== 'boolean') throw new TypeError(`${name} must be boolean`);
+}
+function deepClone(value) { return structuredClone(value); }
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === 'object') {
@@ -75,7 +78,10 @@ export function movePlacement(project, placementId, startMs) {
 export function trimPlacement(project, placementId, { sourceOffsetMs, durationMs }) {
   return editPlacement(project, placementId, { sourceOffsetMs, durationMs });
 }
-export function setLoop(project, placementId, loop) { return editPlacement(project, placementId, { loop: Boolean(loop) }); }
+export function setLoop(project, placementId, loop) {
+  assertBoolean(loop, 'placement loop');
+  return editPlacement(project, placementId, { loop });
+}
 export function setFades(project, placementId, { fadeInMs, fadeOutMs }) {
   return editPlacement(project, placementId, { fadeInMs, fadeOutMs });
 }
@@ -85,8 +91,8 @@ export function setTrackMix(project, trackId, patch = {}) {
   const track = requireTrack(next, trackId);
   if ('gain' in patch) { assertFinite(patch.gain, 'track gain'); if (patch.gain < 0) throw new TypeError('track gain must be >= 0'); track.gain = patch.gain; }
   if ('pan' in patch) { assertFinite(patch.pan, 'track pan'); if (patch.pan < -1 || patch.pan > 1) throw new TypeError('track pan must be between -1 and 1'); track.pan = patch.pan; }
-  if ('mute' in patch) track.mute = Boolean(patch.mute);
-  if ('solo' in patch) track.solo = Boolean(patch.solo);
+  if ('mute' in patch) { assertBoolean(patch.mute, 'track mute'); track.mute = patch.mute; }
+  if ('solo' in patch) { assertBoolean(patch.solo, 'track solo'); track.solo = patch.solo; }
   return bump(next);
 }
 
@@ -164,16 +170,28 @@ export function validateProject(project) {
     if (typeof track.mute !== 'boolean' || typeof track.solo !== 'boolean') throw new TypeError('track mute/solo must be boolean');
     if (!Array.isArray(track.placements)) throw new TypeError('track placements must be an array');
     for (const placement of track.placements) {
+      if (placement.schema !== PLACEMENT_SCHEMA) throw new TypeError(`placement schema must be ${PLACEMENT_SCHEMA}`);
+      for (const key of ['startMs', 'sourceOffsetMs', 'durationMs', 'fadeInMs', 'fadeOutMs', 'gain']) {
+        assertFiniteNonNegative(placement[key], `placement ${key}`);
+      }
+      if (typeof placement.loop !== 'boolean') throw new TypeError('placement loop must be boolean');
       const normalized = normalizePlacement(placement);
       if (placementIds.has(normalized.id)) throw new Error(`duplicate placement id: ${normalized.id}`);
       placementIds.add(normalized.id);
     }
   }
+  const automationIds = new Set();
   for (const automation of project.automation) {
     if (automation.schema !== AUTOMATION_SCHEMA) throw new TypeError(`automation schema must be ${AUTOMATION_SCHEMA}`);
     assertId(automation.id, 'automation id');
+    if (automationIds.has(automation.id)) throw new Error(`duplicate automation id: ${automation.id}`);
+    automationIds.add(automation.id);
     assertId(automation.target, 'automation target');
     if (!Array.isArray(automation.points) || automation.points.length === 0) throw new TypeError('automation points must be non-empty');
+    for (const [index, point] of automation.points.entries()) {
+      assertFiniteNonNegative(point.timeMs, `automation point ${index} timeMs`);
+      assertFinite(point.value, `automation point ${index} value`);
+    }
   }
   return project;
 }
@@ -185,17 +203,18 @@ function normalizePlacement(input = {}) {
   if (!input.source || typeof input.source !== 'object') throw new TypeError('placement source must be an object');
   assertId(input.source.kind, 'placement source.kind');
   assertId(input.source.ref, 'placement source.ref');
+  if (input.loop !== undefined) assertBoolean(input.loop, 'placement loop');
   const placement = {
     schema: PLACEMENT_SCHEMA,
     id: input.id,
     source: deepClone(input.source),
-    startMs: input.startMs ?? 0,
-    sourceOffsetMs: input.sourceOffsetMs ?? 0,
+    startMs: input.startMs === undefined ? 0 : input.startMs,
+    sourceOffsetMs: input.sourceOffsetMs === undefined ? 0 : input.sourceOffsetMs,
     durationMs: input.durationMs,
-    loop: Boolean(input.loop),
-    fadeInMs: input.fadeInMs ?? 0,
-    fadeOutMs: input.fadeOutMs ?? 0,
-    gain: input.gain ?? 1
+    loop: input.loop === undefined ? false : input.loop,
+    fadeInMs: input.fadeInMs === undefined ? 0 : input.fadeInMs,
+    fadeOutMs: input.fadeOutMs === undefined ? 0 : input.fadeOutMs,
+    gain: input.gain === undefined ? 1 : input.gain
   };
   assertFiniteNonNegative(placement.startMs, 'placement startMs');
   assertFiniteNonNegative(placement.sourceOffsetMs, 'placement sourceOffsetMs');

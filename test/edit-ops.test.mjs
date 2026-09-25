@@ -24,6 +24,34 @@ function baseProject() {
 
 function placement(project) { return project.tracks[0].placements[0]; }
 
+test('rejected numeric edits leave project and undo history intact', () => {
+  const session = createEditSession(baseProject());
+  const before = structuredClone(session);
+  for (const gain of [NaN, Infinity, -Infinity, null]) {
+    assert.throws(() => commitEdit(session, {
+      schema: 'axm.sound-mix-edit/v1', id: 'invalid', kind: 'placement.patch',
+      targetId: 'phrase', patch: { gain }
+    }), TypeError);
+    assert.deepEqual(session, before);
+  }
+});
+
+test('boolean lookalikes cannot turn on loop, mute or solo', () => {
+  const session = createEditSession(baseProject());
+  for (const patch of [{ loop: 'false' }, { loop: 1 }]) {
+    assert.throws(() => commitEdit(session, {
+      schema: 'axm.sound-mix-edit/v1', id: 'invalid', kind: 'placement.patch',
+      targetId: 'phrase', patch
+    }), TypeError);
+  }
+  for (const patch of [{ mute: 'false' }, { solo: 1 }]) {
+    assert.throws(() => commitEdit(session, {
+      schema: 'axm.sound-mix-edit/v1', id: 'invalid', kind: 'track.mix',
+      targetId: 'music', patch
+    }), TypeError);
+  }
+});
+
 test('explicit AI edit applies only against the expected canonical revision', () => {
   const project = baseProject();
   const edit = {
